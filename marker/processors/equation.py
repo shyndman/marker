@@ -8,6 +8,7 @@ from surya.recognition import RecognitionPredictor
 
 from marker.logger import get_logger
 from marker.processors import BaseProcessor
+from marker.progress import ProgressHandler
 from marker.schema import BlockTypes
 from marker.schema.document import Document
 from marker.schema.labels import block_type_to_surya_label
@@ -80,11 +81,45 @@ class EquationProcessor(BaseProcessor):
             return self.ocr_inline_math
         return self.mode == "balanced"
 
-    def __call__(self, document: Document):
+    def __call__(
+        self, document: Document, *, on_progress: ProgressHandler | None = None
+    ):
         if self.disable_ocr or not self.ocr_equations:
             # No VLM: leave equation blocks as their pdftext content.
             return
 
+        images, layout_results, block_ids = self.build_ocr_requests(document)
+        if not images:
+            return
+
+        self.recognition_model.disable_tqdm = self.disable_tqdm
+        recognition_results = self.recognition_model(
+            images=images,
+            layout_results=layout_results,
+            full_page=False,
+            on_progress=on_progress,
+        )
+
+        for page_block_ids, page_result in zip(block_ids, recognition_results):
+            assert len(page_block_ids) == len(page_result.blocks), (
+                "Every equation block should have a corresponding prediction"
+            )
+            for block_id, block_result in zip(page_block_ids, page_result.blocks):
+                if block_result.error or not block_result.html:
+                    logger.warning(f"Equation recognition failed for {block_id}")
+                    continue
+                block = document.get_block(block_id)
+                if block.block_type == BlockTypes.Equation:
+                    block.html = self.fix_latex(block_result.html)
+                elif block.block_type == BlockTypes.ChemicalBlock:
+                    block.html = block_result.html.strip()
+                else:
+                    # Inline-math text block: html carries inline <math>; drop the
+                    # pdftext line/span structure so the html leaf is rendered.
+                    block.html = block_result.html.strip()
+                    block.structure = []
+
+    def build_ocr_requests(self, document: Document):
         inline_math_blocks = (
             self._collect_inline_math_blocks(document)
             if self._inline_math_enabled()
@@ -137,32 +172,7 @@ class EquationProcessor(BaseProcessor):
             )
             block_ids.append(page_block_ids)
 
-        if not images:
-            return
-
-        self.recognition_model.disable_tqdm = self.disable_tqdm
-        recognition_results = self.recognition_model(
-            images=images, layout_results=layout_results, full_page=False
-        )
-
-        for page_block_ids, page_result in zip(block_ids, recognition_results):
-            assert len(page_block_ids) == len(page_result.blocks), (
-                "Every equation block should have a corresponding prediction"
-            )
-            for block_id, block_result in zip(page_block_ids, page_result.blocks):
-                if block_result.error or not block_result.html:
-                    logger.warning(f"Equation recognition failed for {block_id}")
-                    continue
-                block = document.get_block(block_id)
-                if block.block_type == BlockTypes.Equation:
-                    block.html = self.fix_latex(block_result.html)
-                elif block.block_type == BlockTypes.ChemicalBlock:
-                    block.html = block_result.html.strip()
-                else:
-                    # Inline-math text block: html carries inline <math>; drop the
-                    # pdftext line/span structure so the html leaf is rendered.
-                    block.html = block_result.html.strip()
-                    block.structure = []
+        return images, layout_results, block_ids
 
     # Math-specific font-name hints (TeX math italics/symbols, AMS, STIX, etc.).
     _MATH_FONT_HINTS = (

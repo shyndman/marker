@@ -6,6 +6,7 @@ from surya.layout.schema import LayoutBox, LayoutResult
 from surya.recognition import RecognitionPredictor, _detect_repeat_loop
 
 from marker.processors import BaseProcessor
+from marker.progress import ProgressHandler
 from marker.processors.table_recon import (
     reconstruct_table_html,
     table_lines_from_pdftext,
@@ -66,7 +67,9 @@ class TableProcessor(BaseProcessor):
         # Conversion stats, useful for monitoring table quality
         self.table_stats = Counter()
 
-    def __call__(self, document: Document):
+    def __call__(
+        self, document: Document, *, on_progress: ProgressHandler | None = None
+    ):
         tables_by_page = self.collect_tables(document)
         total = sum(len(v) for v in tables_by_page.values())
         if not total:
@@ -90,7 +93,7 @@ class TableProcessor(BaseProcessor):
                 else:
                     ocr_fallback.append((page, block))
 
-        self.run_ocr_fallback(document, ocr_fallback)
+        self.run_ocr_fallback(document, ocr_fallback, on_progress=on_progress)
         self.cleanup_contained_blocks(document, tables_by_page)
 
         # Release the cached raw pdftext pages - they hold char-level data
@@ -125,7 +128,13 @@ class TableProcessor(BaseProcessor):
             return None
         return html
 
-    def run_ocr_fallback(self, document: Document, fallback: list):
+    def run_ocr_fallback(
+        self,
+        document: Document,
+        fallback: list,
+        *,
+        on_progress: ProgressHandler | None = None,
+    ):
         """OCR the crops of digital tables the pdftext heuristics couldn't
         resolve, with the recognition model (one box per table -> HTML)."""
         if not fallback or self.disable_ocr:
@@ -153,7 +162,10 @@ class TableProcessor(BaseProcessor):
 
         self.recognition_model.disable_tqdm = self.disable_tqdm
         results = self.recognition_model(
-            images=images, layout_results=layout_results, full_page=False
+            images=images,
+            layout_results=layout_results,
+            full_page=False,
+            on_progress=on_progress,
         )
         for (block, _tc), page_result in zip(entries, results):
             block_result = page_result.blocks[0] if page_result.blocks else None

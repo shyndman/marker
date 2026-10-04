@@ -7,6 +7,7 @@ from surya.recognition import RecognitionPredictor, _detect_repeat_loop
 
 from marker.builders import BaseBuilder
 from marker.logger import get_logger
+from marker.progress import ProgressHandler
 from marker.providers.pdf import PdfProvider
 from marker.schema import BlockTypes
 from marker.schema.blocks import BlockId
@@ -69,7 +70,13 @@ class OcrBuilder(BaseBuilder):
 
         self.recognition_model = recognition_model
 
-    def __call__(self, document: Document, provider: PdfProvider):
+    def __call__(
+        self,
+        document: Document,
+        provider: PdfProvider,
+        *,
+        on_progress: ProgressHandler | None = None,
+    ):
         self.recognition_model.disable_tqdm = self.disable_tqdm
 
         # Pages whose embedded text was unusable get OCR'd wholesale.
@@ -97,14 +104,20 @@ class OcrBuilder(BaseBuilder):
                 if all(len(layout.bboxes) == 0 for layout in layout_results):
                     layout_results = None
                 recognition_results = self.recognition_model(
-                    images=images, layout_results=layout_results, full_page=True
+                    images=images,
+                    layout_results=layout_results,
+                    full_page=True,
+                    on_progress=on_progress,
                 )
                 self.replace_page_structure(
                     document, full_page_pages, images, recognition_results
                 )
             else:
                 recognition_results = self.recognition_model(
-                    images=images, layout_results=layout_results, full_page=False
+                    images=images,
+                    layout_results=layout_results,
+                    full_page=False,
+                    on_progress=on_progress,
                 )
                 self.apply_block_html(document, recognition_results, block_ids)
 
@@ -113,9 +126,11 @@ class OcrBuilder(BaseBuilder):
         # page's pdftext content. (In balanced mode LineBuilder promotes any
         # page with flagged blocks to full-page OCR, so this only fires in
         # fast mode - the cheap, surgical repair.)
-        self.ocr_flagged_blocks(document)
+        self.ocr_flagged_blocks(document, on_progress=on_progress)
 
-    def ocr_flagged_blocks(self, document: Document):
+    def ocr_flagged_blocks(
+        self, document: Document, *, on_progress: ProgressHandler | None = None
+    ):
         images = []
         layout_results = []
         block_ids = []
@@ -160,7 +175,10 @@ class OcrBuilder(BaseBuilder):
             return
 
         recognition_results = self.recognition_model(
-            images=images, layout_results=layout_results, full_page=False
+            images=images,
+            layout_results=layout_results,
+            full_page=False,
+            on_progress=on_progress,
         )
         self.apply_block_html(
             document, recognition_results, block_ids, clear_lines=True

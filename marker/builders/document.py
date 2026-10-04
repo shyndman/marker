@@ -56,7 +56,7 @@ class DocumentBuilder(BaseBuilder):
         on_progress: ProgressHandler | None = None,
     ):
         document = self.build_document(provider)
-        layout_builder(document, provider)
+        layout_builder(document, provider, on_progress=on_progress)
         line_builder(document, provider, on_progress=on_progress)
         # Now that layout + the OCR decision are known, render high-res only for
         # the pages that actually need it (one batched pass). Anything missed
@@ -64,7 +64,7 @@ class DocumentBuilder(BaseBuilder):
         # per-page lazy loader set in build_document.
         self.render_highres(document, provider)
         if not self.disable_ocr:
-            ocr_builder(document, provider)
+            ocr_builder(document, provider, on_progress=on_progress)
         return document
 
     def page_needs_highres(self, page: PageGroup) -> bool:

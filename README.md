@@ -204,13 +204,18 @@ rendered = converter("FILEPATH", on_progress=report_progress)
 
 `PdfConverter`, `TableConverter`, and `OCRConverter` accept the keyword-only `on_progress` argument.
 Their `build_document` methods also accept it.
-Marker passes the same callback to both OCR-error checks and the LLM meta processor.
-Local Surya operations report batches for `detection` and `ocr_error`.
-The remote Surya client does not report these events.
+Marker forwards the callback through layout, OCR-error checks, page/block OCR,
+equation and table OCR, and the LLM meta processor.
+Surya reports `detection` and `ocr_error` in their native batch units.
+`layout` counts page inference requests; `ocr` counts submitted recognition
+items (full pages or individual blocks/crops, including equation/table work).
+Balanced inference reports actual finished requests, preserving result input order.
+Fast layout reports zero before work and the page total after the layout batch returns;
+it does not invent intermediate per-page completions.
 Marker's current line builder uses the OCR-error operation, not the detection operation.
 The LLM meta processor reports processed prompts, including prompts whose requests or responses fail.
 Each operation starts at zero and reports its own total.
-Separate calls can report the same operation with a new total.
+Separate calls, retries, and fallback batches can report the same operation with a new total.
 These counts are not a conversion-wide percentage.
 Callback exceptions propagate to the caller.
 Without a callback, these sites do not display progress bars.

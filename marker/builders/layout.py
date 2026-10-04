@@ -4,9 +4,11 @@ import numpy as np
 from surya.fast_layout import FastLayoutPredictor
 from surya.layout import LayoutPredictor
 from surya.layout.schema import LayoutResult, LayoutBox
+from surya.common.progress import ProgressEvent
 
 from marker.builders import BaseBuilder
 from marker.logger import get_logger
+from marker.progress import ProgressHandler
 from marker.providers.pdf import PdfProvider
 from marker.schema import BlockTypes
 from marker.schema.document import Document
@@ -92,7 +94,13 @@ class LayoutBuilder(BaseBuilder):
     def get_layout_model(self):
         return self.fast_layout_model if self.use_fast_layout() else self.layout_model
 
-    def __call__(self, document: Document, provider: PdfProvider):
+    def __call__(
+        self,
+        document: Document,
+        provider: PdfProvider,
+        *,
+        on_progress: ProgressHandler | None = None,
+    ):
         if self.force_layout_block is not None:
             # Assign the full content of every page to a single layout type
             layout_results = self.forced_layout(document.pages)
@@ -105,7 +113,9 @@ class LayoutBuilder(BaseBuilder):
                 for page in document.pages
             ]
         else:
-            layout_results = self.surya_layout(document.pages, provider)
+            layout_results = self.surya_layout(
+                document.pages, provider, on_progress=on_progress
+            )
         self.add_blocks_to_pages(document.pages, layout_results)
         self.expand_layout_blocks(document)
 
@@ -129,13 +139,17 @@ class LayoutBuilder(BaseBuilder):
         return layout_results
 
     def surya_layout(
-        self, pages: List[PageGroup], provider: PdfProvider
+        self,
+        pages: List[PageGroup],
+        provider: PdfProvider,
+        *,
+        on_progress: ProgressHandler | None = None,
     ) -> List[LayoutResult]:
         model = self.get_layout_model()
         model.disable_tqdm = self.disable_tqdm
         images = [p.get_image(highres=False) for p in pages]
         if not self.use_fast_layout():
-            return model(images)
+            return self.layout_model(images, on_progress=on_progress)
 
         # Fast mode skips the layout reading-order head wherever pdftext can
         # order the page instead (LineBuilder reorders from the PDF character
@@ -143,8 +157,13 @@ class LayoutBuilder(BaseBuilder):
         # (scanned) pages, whose layout order seeds block-mode OCR and the
         # per-page fallback when full-page OCR fails - and every page when
         # pdftext ordering is turned off.
+        if on_progress is not None:
+            on_progress(ProgressEvent("layout", 0, len(images)))
         if not self.use_pdftext_reading_order:
-            return model(images, use_order=True)
+            results = self.fast_layout_model(images, use_order=True)
+            if on_progress is not None:
+                on_progress(ProgressEvent("layout", len(images), len(images)))
+            return results
 
         need_order, raster = [], []
         for i, page in enumerate(pages):
@@ -162,6 +181,8 @@ class LayoutBuilder(BaseBuilder):
             need_order, model([images[i] for i in need_order], use_order=True)
         ):
             results[idx] = result
+        if on_progress is not None:
+            on_progress(ProgressEvent("layout", len(images), len(images)))
         return results
 
     def expand_layout_blocks(self, document: Document):

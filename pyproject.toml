@@ -79,4 +79,4 @@ build-backend = "hatchling.build"
 packages = ["marker"]
 
 [tool.uv.sources]
-surya-ocr = { git = "https://github.com/shyndman/surya.git", rev = "98a355ee50e78cf0af918b9486b0c0ee2e57f58e" }
+surya-ocr = { git = "https://github.com/shyndman/surya.git" }

@@ -208,7 +208,10 @@ class PdfConverter(BaseConverter):
         structure_builder_cls(document)
 
         for processor in self.processor_list:
-            if isinstance(processor, LLMSimpleBlockMetaProcessor):
+            if isinstance(
+                processor,
+                (LLMSimpleBlockMetaProcessor, EquationProcessor, TableProcessor),
+            ):
                 processor(document, on_progress=on_progress)
             else:
                 processor(document)
