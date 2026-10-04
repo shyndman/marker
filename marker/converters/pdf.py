@@ -54,6 +54,8 @@ from marker.processors.line_merge import LineMergeProcessor
 from marker.processors.llm.llm_mathblock import LLMMathBlockProcessor
 from marker.processors.llm.llm_page_correction import LLMPageCorrectionProcessor
 from marker.processors.llm.llm_sectionheader import LLMSectionHeaderProcessor
+from marker.processors.llm.llm_meta import LLMSimpleBlockMetaProcessor
+from marker.progress import ProgressHandler
 
 
 class PdfConverter(BaseConverter):
@@ -191,26 +193,33 @@ class PdfConverter(BaseConverter):
             if temp_file is not None and os.path.exists(temp_file.name):
                 os.unlink(temp_file.name)
 
-    def build_document(self, filepath: str) -> Document:
+    def build_document(
+        self, filepath: str, *, on_progress: ProgressHandler | None = None
+    ) -> Document:
         provider_cls = provider_from_filepath(filepath)
         layout_builder = self.resolve_dependencies(self.layout_builder_class)
         line_builder = self.resolve_dependencies(LineBuilder)
         ocr_builder = self.resolve_dependencies(OcrBuilder)
         provider = provider_cls(filepath, self.config)
         document = DocumentBuilder(self.config)(
-            provider, layout_builder, line_builder, ocr_builder
+            provider, layout_builder, line_builder, ocr_builder, on_progress=on_progress
         )
         structure_builder_cls = self.resolve_dependencies(StructureBuilder)
         structure_builder_cls(document)
 
         for processor in self.processor_list:
-            processor(document)
+            if isinstance(processor, LLMSimpleBlockMetaProcessor):
+                processor(document, on_progress=on_progress)
+            else:
+                processor(document)
 
         return document
 
-    def __call__(self, filepath: str | io.BytesIO):
+    def __call__(
+        self, filepath: str | io.BytesIO, *, on_progress: ProgressHandler | None = None
+    ):
         with self.filepath_to_str(filepath) as temp_path:
-            document = self.build_document(temp_path)
+            document = self.build_document(temp_path, on_progress=on_progress)
             self.page_count = len(document.pages)
             renderer = self.resolve_dependencies(self.renderer)
             rendered = renderer(document)

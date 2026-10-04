@@ -7,6 +7,7 @@ from surya.ocr_error import OCRErrorPredictor
 from marker.builders import BaseBuilder
 from marker.providers import ProviderOutput, ProviderPageLines
 from marker.providers.pdf import PdfProvider
+from marker.progress import ProgressHandler
 from marker.schema import BlockTypes
 from marker.schema.document import Document
 from marker.schema.groups.page import PageGroup
@@ -144,12 +145,18 @@ class LineBuilder(BaseBuilder):
 
         self.ocr_error_model = ocr_error_model
 
-    def __call__(self, document: Document, provider: PdfProvider):
-        provider_lines = self.get_all_lines(document, provider)
+    def __call__(
+        self,
+        document: Document,
+        provider: PdfProvider,
+        *,
+        on_progress: ProgressHandler | None = None,
+    ):
+        provider_lines = self.get_all_lines(document, provider, on_progress=on_progress)
         self.merge_blocks(document, provider_lines)
         self.order_blocks_by_reading_order(document)
         if not self.disable_ocr:
-            self.flag_bad_blocks(document)
+            self.flag_bad_blocks(document, on_progress=on_progress)
 
     def order_blocks_by_reading_order(self, document: Document):
         """Order layout blocks on pdftext pages by the PDF's character reading
@@ -196,7 +203,13 @@ class LineBuilder(BaseBuilder):
             return 14
         return 4
 
-    def get_all_lines(self, document: Document, provider: PdfProvider):
+    def get_all_lines(
+        self,
+        document: Document,
+        provider: PdfProvider,
+        *,
+        on_progress: ProgressHandler | None = None,
+    ):
         # disable_ocr keeps the PDF text layer regardless, so skip the
         # ocr-error model entirely (no server needed on the pure-CPU path).
         if self.disable_ocr:
@@ -204,7 +217,7 @@ class LineBuilder(BaseBuilder):
             scores = [0.0] * len(document.pages)
         else:
             ocr_error_detection_results = self.ocr_error_detection(
-                document.pages, provider.page_lines
+                document.pages, provider.page_lines, on_progress=on_progress
             )
             labels = ocr_error_detection_results.labels
             # page-level P(bad); used to gate the per-block recheck.
@@ -247,7 +260,11 @@ class LineBuilder(BaseBuilder):
         return page_lines
 
     def ocr_error_detection(
-        self, pages: List[PageGroup], provider_page_lines: ProviderPageLines
+        self,
+        pages: List[PageGroup],
+        provider_page_lines: ProviderPageLines,
+        *,
+        on_progress: ProgressHandler | None = None,
     ):
         page_texts = []
         for document_page in pages:
@@ -259,7 +276,9 @@ class LineBuilder(BaseBuilder):
 
         self.ocr_error_model.disable_tqdm = self.disable_tqdm
         ocr_error_detection_results = self.ocr_error_model(
-            page_texts, batch_size=int(self.get_ocr_error_batch_size())
+            page_texts,
+            batch_size=int(self.get_ocr_error_batch_size()),
+            on_progress=on_progress,
         )
         return ocr_error_detection_results
 
@@ -382,7 +401,9 @@ class LineBuilder(BaseBuilder):
                 keep_chars=self.keep_chars,
             )
 
-    def flag_bad_blocks(self, document: Document):
+    def flag_bad_blocks(
+        self, document: Document, *, on_progress: ProgressHandler | None = None
+    ):
         """On pages that pass as pdftext, flag individual text blocks whose
         embedded text is missing or garbled so the OcrBuilder re-OCRs just
         those blocks. If too many blocks on a page are bad, promote the whole
@@ -460,6 +481,7 @@ class LineBuilder(BaseBuilder):
             labels = self.ocr_error_model(
                 [t for _, t in garbled_candidates],
                 batch_size=int(self.get_ocr_error_batch_size()),
+                on_progress=on_progress,
             ).labels
             for (block, _), label in zip(garbled_candidates, labels):
                 if label == "bad":

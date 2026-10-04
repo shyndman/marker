@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any
 
 from marker.logger import get_logger
-from tqdm import tqdm
+from marker.progress import LLMProgressEvent, ProgressHandler
 
 from marker.processors.llm import BaseLLMSimpleBlockProcessor, BaseLLMProcessor
 from marker.schema.document import Document
@@ -25,16 +25,18 @@ class LLMSimpleBlockMetaProcessor(BaseLLMProcessor):
         super().__init__(llm_service, config)
         self.processors = processor_lst
 
-    def __call__(self, document: Document):
+    def __call__(
+        self, document: Document, *, on_progress: ProgressHandler | None = None
+    ) -> None:
         if not self.use_llm or self.llm_service is None:
             return
 
         total = sum(
             [len(processor.inference_blocks(document)) for processor in self.processors]
         )
-        pbar = tqdm(
-            desc="LLM processors running", disable=self.disable_tqdm, total=total
-        )
+        completed = 0
+        if on_progress is not None:
+            on_progress(LLMProgressEvent("llm", completed, total))
 
         all_prompts = [
             processor.block_prompts(document) for processor in self.processors
@@ -60,9 +62,9 @@ class LLMSimpleBlockMetaProcessor(BaseLLMProcessor):
                 except Exception as e:
                     logger.warning(f"Error processing LLM response: {e}")
 
-                pbar.update(1)
-
-        pbar.close()
+                completed += 1
+                if on_progress is not None:
+                    on_progress(LLMProgressEvent("llm", completed, total))
 
     def get_response(self, prompt_data: Dict[str, Any]):
         return self.llm_service(

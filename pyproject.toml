@@ -77,3 +77,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["marker"]
+
+[tool.uv.sources]
+surya-ocr = { path = "../surya", editable = true }

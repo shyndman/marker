@@ -5,6 +5,7 @@ from marker.builders.layout import LayoutBuilder
 from marker.builders.line import LineBuilder
 from marker.builders.ocr import OcrBuilder
 from marker.providers.pdf import PdfProvider
+from marker.progress import ProgressHandler
 from marker.schema import BlockTypes
 from marker.schema.document import Document
 from marker.schema.groups.page import PageGroup
@@ -51,10 +52,12 @@ class DocumentBuilder(BaseBuilder):
         layout_builder: LayoutBuilder,
         line_builder: LineBuilder,
         ocr_builder: OcrBuilder,
+        *,
+        on_progress: ProgressHandler | None = None,
     ):
         document = self.build_document(provider)
         layout_builder(document, provider)
-        line_builder(document, provider)
+        line_builder(document, provider, on_progress=on_progress)
         # Now that layout + the OCR decision are known, render high-res only for
         # the pages that actually need it (one batched pass). Anything missed
         # (e.g. opt-in LLM processors touching a clean page) falls back to the

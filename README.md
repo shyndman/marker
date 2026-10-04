@@ -187,6 +187,36 @@ text, _, images = text_from_rendered(rendered)
 
 `rendered` will be a pydantic basemodel with different properties depending on the output type requested.  With markdown output (default), you'll have the properties `markdown`, `metadata`, and `images`.  For json output, you'll have `children`, `block_type`, and `metadata`.
 
+### Progress callbacks
+
+Pass a callback for each conversion. Do not put the callback in the configuration or model artifacts.
+
+```python
+from marker.progress import LLMProgressEvent, SuryaProgressEvent
+
+
+def report_progress(event: SuryaProgressEvent | LLMProgressEvent) -> None:
+    print(f"{event.operation}: {event.completed}/{event.total}")
+
+
+rendered = converter("FILEPATH", on_progress=report_progress)
+```
+
+`PdfConverter`, `TableConverter`, and `OCRConverter` accept the keyword-only `on_progress` argument.
+Their `build_document` methods also accept it.
+Marker passes the same callback to both OCR-error checks and the LLM meta processor.
+Local Surya operations report batches for `detection` and `ocr_error`.
+The remote Surya client does not report these events.
+Marker's current line builder uses the OCR-error operation, not the detection operation.
+The LLM meta processor reports processed prompts, including prompts whose requests or responses fail.
+Each operation starts at zero and reports its own total.
+Separate calls can report the same operation with a new total.
+These counts are not a conversion-wide percentage.
+Callback exceptions propagate to the caller.
+Without a callback, these sites do not display progress bars.
+Other LLM progress bars do not change.
+
+
 ### Custom configuration
 
 You can pass configuration using the `ConfigParser`.  To see all available options, do `marker_single --help`.
