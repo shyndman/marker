@@ -108,6 +108,7 @@ First, some configuration:
 - Useful server settings (all surya env vars): `SURYA_INFERENCE_BACKEND` (`vllm` or `llamacpp`), `SURYA_INFERENCE_PARALLEL` (concurrent requests — by default this auto-scales to the server's capacity: the GPU's `max_num_seqs` under vllm, a conservative slot count under llama.cpp; set an int only to override), `SURYA_INFERENCE_KEEP_ALIVE` (keep the server running between invocations), `VLLM_GPUS` (GPU indices for the server).
 - Some PDFs, even digital ones, have bad text in them.  Set `--force_ocr` to force OCR on all pages, or the `strip_existing_ocr` to keep all digital text, and strip out any existing OCR text.
 - Inline math is converted to LaTeX automatically in balanced mode (`ocr_inline_math`); in fast mode, set `--force_ocr` or `--ocr_inline_math` to get the same.
+- At `LOGLEVEL=INFO` (the default), PDF conversion logs its start and mode, document building, structure building, each document processor, rendering, and completion with the page count. These are stage-level activity messages, not per-block progress. Python applications can enable Marker's console logging with `from marker.logger import configure_logging; configure_logging()`. Marker keeps its console records from propagating to root handlers to avoid duplicate output.
 
 ## Interactive App
 

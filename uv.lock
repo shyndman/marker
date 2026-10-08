@@ -5485,7 +5485,7 @@ wheels = [
 [[package]]
 name = "surya-ocr"
 version = "0.22.1"
-source = { git = "https://github.com/shyndman/surya.git#d242a9652096d0b6530cf53dd9f62ba7dd257ff8" }
+source = { git = "https://github.com/shyndman/surya.git#b64e567bbece428a8aa40b2fec40ff4bcfd1bd94" }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "click" },

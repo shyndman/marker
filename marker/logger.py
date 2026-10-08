@@ -17,6 +17,8 @@ def configure_logging():
         logger.addHandler(handler)
 
     logger.setLevel(settings.LOGLEVEL)
+    # Marker owns its console handler; root handlers would print each record again.
+    logger.propagate = False
 
     # Ignore future warnings
     warnings.simplefilter(action="ignore", category=FutureWarning)
