@@ -179,6 +179,7 @@ class OcrBuilder(BaseBuilder):
             layout_results=layout_results,
             full_page=False,
             on_progress=on_progress,
+            purpose="flagged_blocks",
         )
         self.apply_block_html(
             document, recognition_results, block_ids, clear_lines=True

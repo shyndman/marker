@@ -4,7 +4,6 @@ import numpy as np
 from surya.fast_layout import FastLayoutPredictor
 from surya.layout import LayoutPredictor
 from surya.layout.schema import LayoutResult, LayoutBox
-from surya.common.progress import ProgressEvent
 
 from marker.builders import BaseBuilder
 from marker.logger import get_logger
@@ -157,12 +156,10 @@ class LayoutBuilder(BaseBuilder):
         # (scanned) pages, whose layout order seeds block-mode OCR and the
         # per-page fallback when full-page OCR fails - and every page when
         # pdftext ordering is turned off.
-        if on_progress is not None:
-            on_progress(ProgressEvent("layout", 0, len(images)))
         if not self.use_pdftext_reading_order:
-            results = self.fast_layout_model(images, use_order=True)
-            if on_progress is not None:
-                on_progress(ProgressEvent("layout", len(images), len(images)))
+            results = self.fast_layout_model(
+                images, use_order=True, on_progress=on_progress
+            )
             return results
 
         need_order, raster = [], []
@@ -174,15 +171,23 @@ class LayoutBuilder(BaseBuilder):
 
         results: List[LayoutResult] = [None] * len(pages)
         for idx, result in zip(
-            raster, model([images[i] for i in raster], use_order=False)
+            raster,
+            model(
+                [images[i] for i in raster],
+                use_order=False,
+                on_progress=on_progress,
+            ),
         ):
             results[idx] = result
         for idx, result in zip(
-            need_order, model([images[i] for i in need_order], use_order=True)
+            need_order,
+            model(
+                [images[i] for i in need_order],
+                use_order=True,
+                on_progress=on_progress,
+            ),
         ):
             results[idx] = result
-        if on_progress is not None:
-            on_progress(ProgressEvent("layout", len(images), len(images)))
         return results
 
     def expand_layout_blocks(self, document: Document):

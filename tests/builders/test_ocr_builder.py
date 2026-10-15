@@ -1,7 +1,7 @@
 from unittest.mock import Mock
 
 from PIL import Image
-from surya.common.progress import BatchProgressHandler
+from surya.common.progress import BatchProgressHandler, ProgressContext
 from surya.inference import SuryaInferenceManager
 from surya.inference.schema import BatchInputItem, BatchOutputItem
 from surya.layout import LayoutPredictor
@@ -56,7 +56,12 @@ def test_inference_progress_precedes_document_updates():
         on_progress: BatchProgressHandler | None = None,
     ) -> list[BatchOutputItem]:
         operation = "layout" if batch[0].prompt_type == "layout" else "ocr"
-        assert events[-1] == SuryaProgressEvent(operation, 0, len(batch))
+        context = (
+            ProgressContext("balanced", "normal", "regions_and_reading_order", "pages")
+            if operation == "layout"
+            else ProgressContext("block", "normal", "recognition", "blocks")
+        )
+        assert events[-1] == SuryaProgressEvent(operation, 0, len(batch), context=context)
         outputs = []
         for index in range(len(batch)):
             if operation == "layout":

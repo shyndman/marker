@@ -98,6 +98,7 @@ class EquationProcessor(BaseProcessor):
             layout_results=layout_results,
             full_page=False,
             on_progress=on_progress,
+            purpose="equation",
         )
 
         for page_block_ids, page_result in zip(block_ids, recognition_results):

@@ -166,6 +166,7 @@ class TableProcessor(BaseProcessor):
             layout_results=layout_results,
             full_page=False,
             on_progress=on_progress,
+            purpose="table",
         )
         for (block, _tc), page_result in zip(entries, results):
             block_result = page_result.blocks[0] if page_result.blocks else None
