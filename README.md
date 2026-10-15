@@ -190,37 +190,56 @@ text, _, images = text_from_rendered(rendered)
 
 ### Progress callbacks
 
-Pass a callback for each conversion. Do not put the callback in the configuration or model artifacts.
+Pass the keyword-only `on_progress` callback to each `PdfConverter`, `TableConverter`, or `OCRConverter` conversion or `build_document` call. Do not store it in configuration or model artifacts.
 
 ```python
 from marker.progress import LLMProgressEvent, SuryaProgressEvent
 
 
 def report_progress(event: SuryaProgressEvent | LLMProgressEvent) -> None:
-    print(f"{event.operation}: {event.completed}/{event.total}")
+    label: str = event.operation
+    unit = ""
+    if isinstance(event, SuryaProgressEvent) and event.context is not None:
+        context = event.context
+        label = (
+            f"{label} ({context.mode}, {context.purpose}, {context.phase}, "
+            f"attempt {context.attempt})"
+        )
+        unit = f" {context.unit}"
+    print(f"{label}: {event.completed}/{event.total}{unit}")
 
 
 rendered = converter("FILEPATH", on_progress=report_progress)
 ```
 
-`PdfConverter`, `TableConverter`, and `OCRConverter` accept the keyword-only `on_progress` argument.
-Their `build_document` methods also accept it.
-Marker forwards the callback through layout, OCR-error checks, page/block OCR,
-equation and table OCR, and the LLM meta processor.
-Surya reports `detection` and `ocr_error` in their native batch units.
-`layout` counts page inference requests; `ocr` counts submitted recognition
-items (full pages or individual blocks/crops, including equation/table work).
-Balanced inference reports actual finished requests, preserving result input order.
-Fast layout reports zero before work and the page total after the layout batch returns;
-it does not invent intermediate per-page completions.
-Marker's current line builder uses the OCR-error operation, not the detection operation.
-The LLM meta processor reports processed prompts, including prompts whose requests or responses fail.
-Each operation starts at zero and reports its own total.
-Separate calls, retries, and fallback batches can report the same operation with a new total.
-These counts are not a conversion-wide percentage.
-Callback exceptions propagate to the caller.
-Without a callback, these sites do not display progress bars.
-Other LLM progress bars do not change.
+Callbacks cover layout, OCR-error checks, page/block OCR, equation/table OCR, and the LLM meta processor.
+
+| Operation | Count |
+| --- | --- |
+| `detection`, `ocr_error` | Native Surya batch units. Marker’s current line builder uses `ocr_error`, not `detection`. |
+| `layout` | Page inference requests. Balanced mode reports finished requests and preserves input order. |
+| `ocr` | Submitted pages, blocks, or crops, including equation/table work. |
+| LLM meta processor | Processed prompts, including request or response failures. |
+
+Fast layout reports zero initially, then completed page totals after each subset batch returns, without intermediate per-page counts. Pages with and without requested reading order form separate batches.
+
+Layout and OCR events carry a frozen `ProgressContext` in `event.context`. Detection and OCR-error events use `None`.
+
+| Field | Layout | OCR |
+| --- | --- | --- |
+| `mode` | `balanced`, `fast` | `full_page`, `block` |
+| `purpose` | `normal`, `ocr_fallback` | `normal`, `flagged_blocks`, `table`, `equation` |
+| `phase` | `regions`, `regions_and_reading_order` | `recognition`, `regeneration`, `block_fallback` |
+| `unit` | `pages` | `pages` for full-page OCR, `blocks` for block OCR |
+| `attempt` | `1` | Starts at `1`, increments for full-page regeneration, resets to `1` for block fallback. |
+
+`purpose` identifies why work runs and stays unchanged through OCR regeneration and block fallback. Targeted repairs use `flagged_blocks`. Specialized OCR uses `table` or `equation`. `phase` identifies the current step. `attempt` counts full-page generation passes, not backend retries. Each batch counts only its submitted work. Regeneration batches exclude successful pages.
+
+Balanced layout finds regions and reading order together. Fast layout uses `regions_and_reading_order` when it requests learned reading order, regardless of model availability. Its service returns both steps together, without separate completion times.
+
+Each operation starts at zero with its own total. Calls, retries, and fallback batches can repeat an operation with different totals. Counts are not conversion-wide percentages.
+
+Callback exceptions propagate to the caller. Without a callback, these sites show no progress bars. Other LLM progress bars stay unchanged.
 
 
 ### Custom configuration
